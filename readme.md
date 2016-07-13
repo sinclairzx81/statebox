@@ -21,7 +21,7 @@ box.addr("header/title").set("my todo list")
 // isolate some scope.
 let todos = box.addr("content/todos")
 
-// observe on state changes on scope.
+// observe state changes on scope.
 todos.observe(items => update_ui(items))
 
 // and update some data.

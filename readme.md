@@ -15,7 +15,7 @@ let box = new Box({
     }
 })
 
-// address its properties with a uri.
+// address its properties with a path.
 box.addr("header/title").set("my todo list")
 
 // isolate some scope.

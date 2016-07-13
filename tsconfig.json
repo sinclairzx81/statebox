@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "module" : "amd",
+    "outFile": "./bin/statebox.js",
+    "declaration": true
+  },
+  "files": [
+    "src/statebox.ts"
+  ]
+}

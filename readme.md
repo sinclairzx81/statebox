@@ -15,7 +15,7 @@ let box = new Box({
     }
 })
 
-// intoess its properties with a path.
+// address its properties with a path.
 box.into("header/title").set("my todo list")
 
 // isolate some scope.

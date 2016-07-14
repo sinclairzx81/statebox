@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------
 
-statebox - uri addressable observable state.
+statebox - It's a box with some state inside.
 
 The MIT License (MIT)
 
@@ -53,8 +53,21 @@ define("statebox", ["require", "exports"], function (require, exports) {
         }
         return "object";
     }
+    function clone(value, typename) {
+        switch (typename) {
+            case "undefined": return undefined;
+            case "function": return eval("(function() {return " + value.toString() + "})()");
+            case "string": return value.slice(0);
+            case "number": return value + 0;
+            case "boolean": return !!value;
+            case "date": return new Date(value.getTime());
+            case "object": throw Error("attempted to clone an object.");
+            case "array": throw Error("attempted to clone an array.");
+        }
+    }
     /**
-     * returns of the given string is a numeric value.
+     * returns true if the given string is a numeric value. Used
+     * for array indexing on the into() and addr() functions.
      * @param {string} the string to test.
      * @returns {boolean} true if the string is numeric.
      */
@@ -63,38 +76,30 @@ define("statebox", ["require", "exports"], function (require, exports) {
     }
     /**
      * Box:
-     * A container type for state. A box can be viewed
-     * as a node in a state graph, providing get / set
+     * A container type for unit of state. A box can be viewed
+     * as a node within a large state graph, providing get / set
      * operations on the state, as well as allowing
      * observation on the state.
      */
     var Box = (function () {
         /**
          * creates a new box.
-         * @param {any?} the value to initialize this box with.
+         * @param {any?} optional value to initialize this box with.
          * @returns {Box}
          */
-        function Box(value) {
+        function Box(initial) {
             this.subscribers = new Array();
-            this.type = "undefined";
-            this.value = undefined;
-            this.set(value);
+            this.set(initial);
         }
         /**
-         * returns the simple typename of the object inside this box.
-         * @returns {string}
-         */
-        Box.prototype.typename = function () {
-            return this.type;
-        };
-        /**
-         * returns keys or indices to child boxes. Only valid for
-         * object and array types. All other types return an empty
-         * array.
-         * @returns {Array<string>|Array<number>}
-         */
+          * returns keys or indices to child boxes. Only valid for
+          * object and array types. All other types return an empty
+          * array. Callers can use this to recursively traverse the
+          * state graph.
+          * @returns {Array<string>|Array<number>}
+          */
         Box.prototype.keys = function () {
-            switch (this.type) {
+            switch (this.typename) {
                 case "undefined":
                 case "function":
                 case "string":
@@ -110,21 +115,21 @@ define("statebox", ["require", "exports"], function (require, exports) {
             }
         };
         /**
-         * observes state changes on this box.
-         * @param {(data: any) => void} a callback containing the new value.
-         * @returns {void}
+         * returns the simple typename of the object inside this box.
+         * @returns {string}
          */
-        Box.prototype.observe = function (func) {
-            this.subscribers.push(func);
+        Box.prototype.type = function () {
+            return this.typename;
         };
         /**
-         * The addr function returns the box by path.
-         * @param {string | number} a key or array index of the box to use.
-         * @returns {State}
+         * Returns the box at the given path. If no box exists at the
+         * given path, the box is contructed with a undefined value.
+         * @param {string | number} the path into this box.
+         * @returns {IBox}
          */
-        Box.prototype.addr = function (path) {
-            var parts = path.split("/");
+        Box.prototype.into = function (path) {
             var box = this;
+            var parts = path.split("/");
             while (parts.length > 0) {
                 var part = parts.shift();
                 box = box.use(part);
@@ -147,7 +152,7 @@ define("statebox", ["require", "exports"], function (require, exports) {
              */
             var key_type = reflect(key);
             if (key_type !== "number" && key_type !== "string") {
-                throw Error("use: invalid key type, expected number or string.");
+                throw Error("invalid key type, expected number or string.");
             }
             /**
              * conditional initialization:
@@ -162,16 +167,16 @@ define("statebox", ["require", "exports"], function (require, exports) {
              */
             if (this.value === undefined) {
                 if (key_type === "number") {
-                    this.type = "array";
+                    this.typename = "array";
                     this.value = [];
                 }
                 else if (key_type === "string") {
                     if (isNumericString(key)) {
-                        this.type = "array";
+                        this.typename = "array";
                         this.value = [];
                     }
                     else {
-                        this.type = "object";
+                        this.typename = "object";
                         this.value = {};
                     }
                 }
@@ -181,7 +186,7 @@ define("statebox", ["require", "exports"], function (require, exports) {
              * use is only valid for objects and arrays. We
              * check here that is the case and throw if not.
              */
-            if (this.type === "object" || this.type == "array") {
+            if (this.typename === "object" || this.typename == "array") {
                 if (this.value[key] === undefined) {
                     this.value[key] = new Box();
                     this.value[key].parent = this;
@@ -189,31 +194,54 @@ define("statebox", ["require", "exports"], function (require, exports) {
                 return this.value[key];
             }
             else {
-                throw Error("the use() function cannot be called on object and array types.");
+                throw Error("use() and addr() functions can only be called on object and array box types.");
             }
         };
         /**
-         * The drop function will drop a objects inner box if it exists. Valid
-         * for object and array box types.
-         * @param {string|number} the key or index to drop.
-         * @returns {}
+         * drops this box from its parent, removing
+         * it from the state graph. If this box has no
+         * parent, no action is taken.
+         * @returns {IBox}
          */
-        Box.prototype.drop = function (key, notify) {
-            if (notify === undefined)
-                notify = true;
-            if (this.value === undefined)
-                return;
-            if (this.value[key] !== undefined) {
-                delete this.value[key];
-                if (notify === true)
-                    this.dispatch();
+        Box.prototype.drop = function () {
+            var _this = this;
+            if (this.parent !== undefined) {
+                switch (this.parent.typename) {
+                    case "undefined":
+                    case "function":
+                    case "string":
+                    case "number":
+                    case "boolean":
+                    case "date":
+                        throw Error("attempted to drop a box with invalid parent.");
+                    case "array":
+                        this.parent.value = this.parent.value.filter(function (box) { return box !== _this; });
+                        this.parent.dispatch();
+                        this.parent = undefined;
+                        break;
+                    case "object":
+                        var key = Object.keys(this.parent.value).reduce(function (acc, key) {
+                            if (_this.parent.value[key] === _this)
+                                acc = key;
+                            return acc;
+                        }, undefined);
+                        if (key === undefined)
+                            throw Error("unable to this box within its parent.");
+                        delete this.parent.value[key];
+                        this.parent.dispatch();
+                        this.parent = undefined;
+                        break;
+                }
             }
+            return this;
         };
         /**
-         * sets the value of this state object.
-         * @param {string} the value to set this state to.
+         * sets the value managed by this box. this function
+         * will wrap each value, object and array as a box
+         * and merge it within the state graph.
+         * @param {T} The value to set this box to.
          * @param {boolean?} should this change cause a notification?
-         * @returns {State}
+         * @returns {void}
          */
         Box.prototype.set = function (value, nofify) {
             var _this = this;
@@ -227,26 +255,26 @@ define("statebox", ["require", "exports"], function (require, exports) {
                 case "number":
                 case "boolean":
                 case "date":
-                    this.type = typename;
-                    this.value = value;
+                    this.typename = typename;
+                    this.value = clone(value, typename);
                     if (nofify === true)
                         this.dispatch();
                     break;
                 case "box":
-                    this.type = value.type;
-                    this.value = value.value;
-                    this.subscribers = [].concat(this.subscribers, value.subscribers);
-                    this.subscribers.reduce(function (acc, subscriber) {
+                    var box = value;
+                    this.set(box.value);
+                    this.subscribers = box.subscribers.reduce(function (acc, subscriber) {
                         if (acc.indexOf(subscriber) === -1)
                             acc.push(subscriber);
                         return acc;
-                    }, []);
+                    }, this.subscribers);
                     if (nofify === true)
                         this.dispatch();
                     break;
                 case "array":
-                    this.type = typename;
-                    this.value = value.map(function (value) {
+                    var array = value;
+                    this.typename = typename;
+                    this.value = array.map(function (value) {
                         var box = new Box();
                         box.parent = _this;
                         box.set(value, false);
@@ -256,11 +284,12 @@ define("statebox", ["require", "exports"], function (require, exports) {
                         this.dispatch();
                     break;
                 case "object":
-                    this.type = typename;
-                    this.value = Object.keys(value).reduce(function (acc, key) {
+                    var obj_1 = value;
+                    this.typename = typename;
+                    this.value = Object.keys(obj_1).reduce(function (acc, key) {
                         acc[key] = new Box();
                         acc[key].parent = _this;
-                        acc[key].set(value[key], false);
+                        acc[key].set(obj_1[key], false);
                         return acc;
                     }, {});
                     if (nofify === true)
@@ -270,14 +299,15 @@ define("statebox", ["require", "exports"], function (require, exports) {
             }
         };
         /**
-         * returns the javascript state housed by this box. The
-         * state is recursively gather from this and inner boxes
-         * to build up the resulting object.
-         * @returns {any}
+         * returns the state managed by this box. The state
+         * returned is a typical javascript object, and is
+         * resolved by traversing the state graph, gathering
+         * values along the way.
+         * @returns {T}
          */
         Box.prototype.get = function () {
             var _this = this;
-            switch (this.type) {
+            switch (this.typename) {
                 case "undefined":
                 case "function":
                 case "string":
@@ -292,7 +322,31 @@ define("statebox", ["require", "exports"], function (require, exports) {
             }
         };
         /**
-         * (internal) dispatches the a change event to observers.
+         * observes state changes on this box. The given callback is
+         * invoked immediately with the current state of this box and
+         * then added to a observer subscription list, in which any
+         * modifications of this box's state will have the callback
+         * invoked with the 'updated' state. Callers can unsubscribe
+         * by calling dispose() on the returned object.
+         * @param   {(data: T) => void} a callback that will be passed the 'current' state of this box.
+         * @returns {Disposable}
+         */
+        Box.prototype.observe = function (func) {
+            var _this = this;
+            func(this.get());
+            this.subscribers.push(func);
+            return {
+                dispose: function () {
+                    var index = _this.subscribers.indexOf(func);
+                    _this.subscribers.splice(index, 1);
+                }
+            };
+        };
+        /**
+         * (internal) dispatches the current state to each
+         * subscriber of this box. This function will traverse
+         * the state graph from this box back to the parent,
+         * notifying each box along the way of state changes.
          * @returns {void}
          */
         Box.prototype.dispatch = function () {

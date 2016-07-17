@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
-    "module" : "amd",
-    "outFile": "./bin/statebox.js",
+    "outDir": "./bin",
     "declaration": true
   },
   "files": [

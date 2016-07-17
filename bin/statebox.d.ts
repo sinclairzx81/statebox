@@ -1,112 +1,189 @@
-declare module "statebox" {
-    export type TypeName = "undefined" | "function" | "string" | "number" | "boolean" | "date" | "box" | "array" | "object";
+/**
+ * utilities:
+ * common utilities for manipulating with
+ * objects and keys.
+ */
+export declare module util {
+    type TypeId = "undefined" | "null" | "function" | "string" | "number" | "boolean" | "date" | "array" | "object" | "box";
     /**
-     * Disposable interface.
+     * reflects the given type, returning its simple typename.
+     * @param {any} the object to reflect.
+     * @returns {TypeName}
      */
-    export interface Disposable {
-        dispose(): any;
-    }
+    function reflect(obj: any): TypeId;
     /**
-     * Box interface.
+     * returns a deep copy of the given object.
+     * @params {any} the value to clone.
+     * @params {string} a reflected typename if known.
+     * @returns {any} a clone of the given object.
      */
-    export interface IBox {
-        type(): TypeName;
-        drop(): IBox;
-        into(path: string): IBox;
-        keys(): Array<number | string>;
-        get<T>(): T;
-        set<T>(value: T, notify?: boolean): void;
-        observe<T>(func: (data: T) => void): Disposable;
-    }
+    function copy(value: any): any;
     /**
-     * Box:
-     * A container type for unit of state. A box can be viewed
-     * as a node within a large state graph, providing get / set
-     * operations on the state, as well as allowing
-     * observation on the state.
+     * tests the left and right object for equality.
+     * @param {any} the left object.
+     * @param {any} the right object.
+     * @returns {boolean}
      */
-    export class Box implements IBox {
-        private parent;
-        private typename;
-        private value;
-        private subscribers;
-        /**
-         * creates a new box.
-         * @param {any?} optional value to initialize this box with.
-         * @returns {Box}
-         */
-        constructor(initial?: any);
-        /**
-          * returns keys or indices to child boxes. Only valid for
-          * object and array types. All other types return an empty
-          * array. Callers can use this to recursively traverse the
-          * state graph.
-          * @returns {Array<string>|Array<number>}
-          */
-        keys(): Array<string | number>;
-        /**
-         * returns the simple typename of the object inside this box.
-         * @returns {string}
-         */
-        type(): TypeName;
-        /**
-         * Returns the box at the given path. If no box exists at the
-         * given path, the box is contructed with a undefined value.
-         * @param {string | number} the path into this box.
-         * @returns {IBox}
-         */
-        into(path: string): IBox;
-        /**
-         * The use function returns or creates a inner box for under this box.
-         * If this box is uninitialized, it will be initialized as a object and
-         * populated with a new box with the given key. valid for object and
-         * array box types.
-         * @param {string | number} a key or array index of the box to use.
-         * @returns {State}
-         */
-        private use(key);
-        /**
-         * drops this box from its parent, removing
-         * it from the state graph. If this box has no
-         * parent, no action is taken.
-         * @returns {IBox}
-         */
-        drop(): IBox;
-        /**
-         * sets the value managed by this box. this function
-         * will wrap each value, object and array as a box
-         * and merge it within the state graph.
-         * @param {T} The value to set this box to.
-         * @param {boolean?} should this change cause a notification?
-         * @returns {void}
-         */
-        set<T>(value: T, nofify?: boolean): void;
-        /**
-         * returns the state managed by this box. The state
-         * returned is a typical javascript object, and is
-         * resolved by traversing the state graph, gathering
-         * values along the way.
-         * @returns {T}
-         */
-        get<T>(): T;
-        /**
-         * observes state changes on this box. The given callback is
-         * invoked immediately with the current state of this box and
-         * then added to a observer subscription list, in which any
-         * modifications of this box's state will have the callback
-         * invoked with the 'updated' state. Callers can unsubscribe
-         * by calling dispose() on the returned object.
-         * @param   {(data: T) => void} a callback that will be passed the 'current' state of this box.
-         * @returns {Disposable}
-         */
-        observe<T>(func: (data: T) => void): Disposable;
-        /**
-         * (internal) dispatches the current state to each
-         * subscriber of this box. This function will traverse
-         * the state graph from this box back to the parent,
-         * notifying each box along the way of state changes.
-         * @returns {void}
-         */
-        private dispatch();
-    }
+    function equals(left: any, right: any): boolean;
+    /**
+     * merges the right object on the left object. The right
+     * object is treated as the dominate object, overwritting
+     * conflicting state on the left.
+     * Objects will only merge if both left and right are either
+     * objects or arrays. In all other cases, the right object
+     * return be returned.
+     * @param {any} the left object
+     * @param {any} the right object.
+     */
+    function merge(left: any, right: any): any;
+}
+export interface SynchronizationObject {
+    path: string;
+    data: any;
+}
+export interface ObserverNextObject {
+    data: any;
+    sync: SynchronizationObject;
+}
+export interface ObserverEndObject {
+    data: any;
+}
+/**
+ * Observable:
+ * provides state observation services.
+ */
+export declare class Observer {
+    private sync_cb;
+    private data_cb;
+    private end_cb;
+    /**
+     * creates a new observer.
+     * @returns {Observer}
+     */
+    constructor();
+    /**
+     * subscribes to synchronization events.
+     * @param {Function} a function to receive the event.
+     * @returns {Observer}
+     */
+    sync(func: (sync: SynchronizationObject) => void): Observer;
+    /**
+     * subscribes to state changes events.
+     * @param {Function} a function to receive the event.
+     * @returns {Observer}
+     */
+    data<T>(func: (data: T) => void): Observer;
+    /**
+     * subscribes to this states end event.
+     * @param {Function} a function to receive the event.
+     * @returns {Observer}
+     */
+    end<T>(func: (data: T) => void): Observer;
+    /**
+     * dispatches this observer event to listeners.
+     * @param {ObserverDispatchEvent} the event.
+     * @returns {void}
+     */
+    sendNext(next: ObserverNextObject): void;
+    /**
+     * dispatches this observer event to listeners.
+     * @param {ObserverDispatchEvent} the event.
+     * @returns {void}
+     */
+    sendEnd(object: ObserverEndObject): void;
+    /**
+     * disposes of this observer.
+     * @returns {void}
+     */
+    dispose(): void;
+}
+/**
+ * Box:
+ *
+ * Encapsulates immutable state and provides
+ * state synchronization.
+ */
+export declare class Box {
+    private observers;
+    private parent;
+    private typeid;
+    private key;
+    private state;
+    /**
+     * creates a new box with the given state.
+     * @param {any} the initial state for this box.
+     * @returns {Box}
+     */
+    constructor(initial?: any);
+    /**
+     * returns the type of this box.
+     * @returns {string}
+     */
+    type(): string;
+    /**
+     * returns an iterator for each inner box.
+     * @returns {Array<string>}
+     */
+    iter(): Array<string>;
+    /**
+     * returns the boxes under this box.
+     * @returns {Array<Box>}
+     */
+    inner(): Array<Box>;
+    /**
+     * returns the path of this box in respect to the root.
+     * @returns {string}
+     */
+    path(): string;
+    /**
+     * moves into a inner box with the given key.
+     * @param {string} the inner box's key.
+     * @returns {Box}
+     */
+    into(indexer: string | number): Box;
+    /**
+     * moves into the box that matches the given path.
+     * @returns {IBox}
+     */
+    with(path: string): Box;
+    /**
+     * gets the value stored in this box.
+     * @returns {any}
+     */
+    get<T>(): T;
+    /**
+     * mix the value in this box with the given value.
+     * @param {any} the value to mix
+     * @returns {void}
+     */
+    mix<T>(value: T): Box;
+    /**
+     * sets the value in this box.
+     * @param {any} the value to set.
+     * @param {boolean} flag indicating if a notification is raised.
+     * @returns {Box}
+     */
+    set<T>(value: T, notify?: boolean): Box;
+    /**
+     * synchronizes this object with the given sync object.
+     * @param {Sync} the sync object emitted from a box observer.
+     * @return {void}
+     */
+    sync(sync: SynchronizationObject): void;
+    /**
+     * returns a observable that a caller can use to observe state
+     * and synchronization events.
+     * @returns {Observable}
+     */
+    observe(): Observer;
+    /**
+     * publishes the state of this box to all observers.
+     * @returns {void}
+     */
+    publish(): void;
+    /**
+     * disposes of this box.
+     * @returns {void}
+     */
+    dispose(): void;
 }

@@ -178,11 +178,14 @@ box.set({})
 ## object properties and addressing
 statebox encodes all objects, arrays and values within a hierarchical 
 tree of boxes. The library provides two functions for 
-addressing into this tree, the into() and keys() functions.
+addressing into this tree, the into() and with() functions.
 
 The into() function returns an inner box at the given path. The into() function
 is only valid for object and array box types. Calling into() on a box that
 contains a direct value is an error.
+
+The with() function is similar to into() with the exception that it accepts
+a qualified path to the box.
 
 ```javascript
 let box = new Box({
@@ -201,7 +204,7 @@ let box = new Box({
 
 // reading various state in the graph.
 console.assert(box.with("header/title").get() === "the title")
-console.assert(box.with("header").with("title").get() === "the title")
+console.assert(box.with("header").into("title").get() === "the title")
 console.assert(box.with("content/author").get() === "dave")
 console.assert(box.with("content/tags/1").get() === "tag1")
 console.assert(box.with("content/paragraphs/1/content").get() === "paragraph 2")

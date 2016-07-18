@@ -26,14 +26,12 @@ THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
 
-
-
 /**
- * utilities:
+ * utility:
  * common utilities for manipulating with
  * objects and keys.
  */
-export module util {
+module util {
 
     export type TypeId = 
           "undefined" 
@@ -47,6 +45,17 @@ export module util {
         | "object"
         | "box"
     
+    /**
+     * generates a random uuid.
+     * @returns {string}
+     */
+    export function uuid(): string {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          var r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
+          return v.toString(16);
+      });
+    }
+
     /**
      * reflects the given type, returning its simple typename.
      * @param {any} the object to reflect.
@@ -133,6 +142,7 @@ export module util {
      * return be returned.
      * @param {any} the left object
      * @param {any} the right object.
+     * @returns {any}
      */
     export function merge(left: any, right: any) : any {
         let left_type  = util.reflect(left)
@@ -153,10 +163,17 @@ export module util {
     }
 }
 
+/**
+ * A synchronization object passed by
+ * observers. Can be passed into other
+ * box's to synchronize their state 
+ * with the sender.
+ */
 export interface SynchronizationObject {
   path: string
   data: any
 }
+
 export interface ObserverNextObject {
   data: any
   sync: SynchronizationObject
@@ -166,8 +183,7 @@ export interface ObserverEndObject {
 }
 
 /**
- * Observable:
- * provides state observation services.
+ * Observer<T>: provides a interface for observing boxes.
  */
 export class Observer {
   private sync_cb: Array<(SyncObject) => void>
@@ -199,17 +215,17 @@ export class Observer {
    * @param {Function} a function to receive the event.
    * @returns {Observer}
    */
-  public data<T>(func: (data: T) => void) : Observer {
+  public data(func: (data: any) => void) : Observer {
     this.data_cb.push(func)
     return this
   }
 
   /**
-   * subscribes to this states end event.
+   * subscribes to this box's end event.
    * @param {Function} a function to receive the event.
    * @returns {Observer}
    */
-  public end<T>(func: (data: T) => void) : Observer {
+  public end(func: (data: any) => void) : Observer {
     this.end_cb.push(func)
     return this
   }
@@ -219,7 +235,7 @@ export class Observer {
    * @param {ObserverDispatchEvent} the event.
    * @returns {void}
    */
-  public sendNext(next: ObserverNextObject) : void {
+  public send_next(next: ObserverNextObject) : void {
     this.data_cb.forEach(callback => callback(next.data))
     this.sync_cb.forEach(callback => callback(next.sync))
   }
@@ -229,7 +245,7 @@ export class Observer {
    * @param {ObserverDispatchEvent} the event.
    * @returns {void}
    */
-  public sendEnd(object: ObserverEndObject) : void {
+  public send_end(object: ObserverEndObject) : void {
     this.end_cb.forEach(callback => callback(object.data))
   }
 
@@ -245,17 +261,15 @@ export class Observer {
 }
 
 /**
- * Box: 
- * 
- * Encapsulates immutable state and provides
- * state synchronization.
+ * Box: A state container.
  */
 export class Box {
-  private observers   : Array<Observer>
-  private parent      : Box
-  private typeid      : string
-  private key         : string
-  private state       : any | Array<Box>
+  private _observers : Array<Observer>
+  private _parent    : Box
+  private _id        : string
+  private _type      : string
+  private _name      : string
+  private _state     : any | Array<Box>
 
   /**
    * creates a new box with the given state.
@@ -263,12 +277,31 @@ export class Box {
    * @returns {Box}
    */
   constructor(initial?: any) {
-    this.observers   = new Array()
-    this.parent      = undefined
-    this.key         = undefined
-    this.typeid      = undefined
-    this.state       = undefined
+    this._observers  = new Array()
+    this._id         = util.uuid()
+    this._parent     = undefined
+    this._name       = undefined
+    this._type       = undefined
+    this._state      = undefined
     this.set(initial)
+  }
+
+  /**
+   * returns this box's unique identifer.
+   * @returns {string}
+   */
+  public id(): string {
+    return this._id
+  }
+
+  /**
+   * returns the name of this box. This name
+   * correlates to a key or index depending
+   * on the parent box.
+   * @returns {string}
+   */
+  public name(): string {
+    return this._name 
   }
 
   /**
@@ -276,35 +309,39 @@ export class Box {
    * @returns {string}
    */
   public type() : string {
-    return this.typeid
+    return this._type
   }
 
   /**
-   * returns an iterator for each inner box. 
+   * returns a iterator for this box's inner boxes.
    * @returns {Array<string>}
    */
   public iter(): Array<string> {
-    switch(this.typeid) {
+    switch(this._type) {
       case "object":
       case "array":
-        return this.state.map(box => box.key).filter(key => key !== undefined).filter(key => key.length > 0)
+        return this._state.map(box => box.key).filter(key => key !== undefined).filter(key => key.length > 0)
       default: 
         return []
     }
   }
 
   /**
-   * returns the boxes under this box.
-   * @returns {Array<Box>}
+   * returns this box's inner boxes. If the box
+   * contains a value type, this function returns
+   * an empty array.
+   * @returns {Array<Box<any>>}
    */
   public inner(): Array<Box> {
-    if(this.typeid === "object" || this.typeid === "array") {
-       return (this.state === undefined) ? [] : this.state as Array<Box>
+    if(this._type === "object" || this._type === "array") {
+       return (this._state === undefined) ? [] : this._state as Array<Box>
     } return []
   }
 
   /**
-   * returns the path of this box in respect to the root. 
+   * returns the fully qualified path of this box.
+   * The qualified path is in respect to the top
+   * most parent box.
    * @returns {string}
    */
   public path(): string {
@@ -322,37 +359,39 @@ export class Box {
   }
 
   /**
-   * moves into a inner box with the given key.
-   * @param {string} the inner box's key.
-   * @returns {Box}
+   * moves into a inner box directly under this 
+   * box. If the inner box does not exist, it is
+   * created and initialized as undefined.
+   * @param {string | number} the key or index of the inner box.
+   * @returns {Box<U>}
    */
-  public into(indexer: string | number) : Box {
-    let key = indexer.toString()
-    if(this.state === undefined) {
-      this.typeid  = isNaN(<any>indexer) ? "object" : "array"
-      this.state = []
+  public into(name: string | number) : Box {
+    let _name = name.toString()
+    if(this._state === undefined) {
+      this._type  = isNaN(<any>_name) ? "object" : "array"
+      this._state = []
     }
-    switch(this.typeid) {
+    switch(this._type) {
       case "array": 
-        if(isNaN(<any>key)) 
+        if(isNaN(<any>_name)) 
           throw Error("cannot move into an array with a string.")
-        if(this.state[key] === undefined) {
-          let box = new Box()
-          box.parent = this
-          box.key    = key
-          this.state[key] = box
+        if(this._state[_name] === undefined) {
+          let box      = new Box()
+          box._parent  = this
+          box._name    = _name
+          this._state[_name] = box
         } 
-        return this.state[key]
+        return this._state[_name]
       case "object":
-        let box = this.state.reduce((acc, box) => {
-          if(box.key === key) acc = box
+        let box = this._state.reduce((acc, box) => {
+          if(box._name === _name) acc = box
           return acc
         }, undefined)
         if(box === undefined) {
-          box    = new Box()
-          box.key    = key
-          box.parent = this
-          this.state.push(box)
+          box         = new Box()
+          box._name   = _name
+          box._parent = this
+          this._state.push(box)
         } 
         return box
       default: throw Error("cannot move a value.")
@@ -360,53 +399,43 @@ export class Box {
   }
 
   /**
-   * moves into the box that matches the given path.
-   * @returns {IBox}
+   * moves into a inner box with a path. If the
+   * inner box's along this path do not exists, the
+   * boxes are created and initialized as undefined.
    */
   public with(path: string): Box {
       if(path.length === 0) return this
       let current = <Box>this
-      let keys    = path.split("/").filter(key => key.length > 0)
-      while (keys.length > 0) {
-          current = current.into(keys.shift())
+      let names   = path.split("/").filter(name => name.length > 0)
+      while (names.length > 0) {
+          current = current.into(names.shift())
       } return current      
   }
 
   /**
-   * gets the value stored in this box.
-   * @returns {any}
+   * returns the value stored within this box.
+   * @returns {T}
    */
-  public get<T>() : T {
-    switch(this.typeid) {
+  public get() : any {
+    switch(this._type) {
         case "object":
-          return this.state.reduce((acc, box) => {
+          return this._state.reduce((acc, box) => {
             acc[box.key] = box.get()
             return acc
           }, {})
         case "array": 
-          return this.state.map(value => value.get())
+          return this._state.map(value => value.get())
         default:
-          return util.copy(this.state) 
+          return util.copy(this._state) 
     }
-  }
-  /**
-   * mix the value in this box with the given value.
-   * @param {any} the value to mix
-   * @returns {void}
-   */
-  public mix<T>(value: T) : Box {
-      let mixed = util.merge(this.get(), value)
-      this.set(mixed)
-      return this
   }
 
   /**
-   * sets the value in this box.
-   * @param {any} the value to set.
-   * @param {boolean} flag indicating if a notification is raised.
-   * @returns {Box}
+   * sets the value stored in this box.
+   * @param {T} the new value for this box.
+   * @returns {Box<U>}
    */
-  public set<T>(value: T, notify?: boolean): Box {
+  public set(value: any, notify?: boolean): Box {
     if(util.equals(this.get(), value)) return
     if(notify === undefined) notify = true
 
@@ -428,7 +457,7 @@ export class Box {
      /**
       * update the typeid of this box.
       */
-     this.typeid = util.reflect(value)
+     this._type = util.reflect(value)
 
     /**
      * set the state.
@@ -439,30 +468,30 @@ export class Box {
      * actual values. Otherwise, the box is
      * a container (object or array).
      */
-     switch(this.typeid) {
+     switch(this._type) {
         case "box":
           this.set((<any>value).get())
           break
         case "object":
-          this.state = Object.keys(value).map(key => {
-            let box    = new Box()
-            box.key    = key
-            box.parent = this
+          this._state = Object.keys(value).map(key => {
+            let box     = new Box()
+            box._name   = key
+            box._parent = this
             box.set(util.copy(value[key]), false)
             return box
           })
           break
         case "array":  
-          this.state = (<any[]><any>value).map<Box>((value, key) => {
-              let box    = new Box()
-              box.key    = key.toString()
-              box.parent = this
+          this._state = (<any[]><any>value).map<Box>((value, key) => {
+              let box     = new Box()
+              box._name   = key.toString()
+              box._parent = this
               box.set(util.copy(value), false)
               return box
           })
           break
         default:
-          this.state = util.copy(value);
+          this._state = util.copy(value);
           break;
     }
     if(notify) this.publish()
@@ -470,33 +499,63 @@ export class Box {
   }
 
   /**
-   * synchronizes this object with the given sync object.
-   * @param {Sync} the sync object emitted from a box observer.
-   * @return {void}
+   * attempts to mix the value stored in this
+   * box with the given value. This is only 
+   * possible for object and array boxes.
+   * @param {any} the value to mix.
+   * @returns {Box<any>}
    */
-  public sync(sync: SynchronizationObject) : void {
-      this.with(sync.path).set(sync.data)
+  public mix(value: any) : Box {
+      let mixed = util.merge(this.get(), value)
+      this.set(mixed)
+      return this
   }
 
   /**
-   * returns a observable that a caller can use to observe state 
-   * and synchronization events.
-   * @returns {Observable}
+   * sets a default value for this box if the
+   * box contains a undefined value. If the box
+   * contains a value, no action is taken.
+   * @param {T} the default value.
+   * @returns {Box<T>}
+   */
+  public default(value: any) : Box {
+    if(this.get() === undefined) {
+      this.set(value)
+    } return this
+  }
+
+  /**
+   * accepts a synchronization object given 
+   * from another box observer. The box will
+   * attempt to set its state based on this 
+   * object.
+   * @param {SynchronizationObject} the sync object.
+   * @returns {Box<T>}
+   */
+  public sync(sync: SynchronizationObject) : Box {
+      this.with(sync.path).set(sync.data)
+      return this
+  }
+
+  /**
+   * returns a box observer.
+   * @returns {Observer<T>}
    */
   public observe() : Observer {
     let observer = new Observer()
-    this.observers.push(observer)
+    this._observers.push(observer)
     return observer
   }
 
   /**
-   * publishes the state of this box to all observers.
-   * @returns {void}
+   * immediately publishes this box's state to 
+   * all observers.
+   * @returns {Box<T>}
    */
-  public publish() : void {
+  public publish() : Box {
     let current = <Box>this        
     while(current !== undefined) {
-      current.observers.forEach(observer => {
+      current._observers.forEach(observer => {
         let next = {
           data: current.get(),
           sync: {
@@ -504,20 +563,23 @@ export class Box {
               data: this.get()
           }
         }
-        observer.sendNext(next)
+        observer.send_next(next)
       }) 
-      current = current.parent
-    }
+      current = current._parent
+    } return this
   }
 
   /**
-   * disposes of this box.
+   * disposes of this box setting its 
+   * parent as undefined and notifying
+   * all observers with a end event.
    * @returns {void}
    */
   public dispose() : void {
-    this.inner().forEach(box => box.dispose())
-    this.observers.forEach(observer => {
-      observer.sendEnd({data: this.get()})
+    this.inner().forEach(box => box.dispose()) 
+    this._observers.forEach(observer => {
+      observer.send_end({data: this.get()})
     })
+    this._parent = undefined
   }
 }

@@ -1,0 +1,34 @@
+<html>
+    <head>
+        <title>react + statebox workbench</title>
+        <link href="/styles/site.css" rel="stylesheet" />
+        <script src="scripts/react/react.js"></script>
+        <script src="scripts/react/react-dom.js"></script>
+        <script src="scripts/amd/amd.js"></script>
+        <script>
+            amd.path.map("statebox", "./scripts/statebox/statebox")
+            amd.path.map("todo",     "./scripts/todo/todo")
+            amd.path.map("inspect",  "./scripts/inspect/inspect")
+            amd.path.map("mouse",    "./scripts/mouse/mouse")
+            amd.path.map("time",     "./scripts/time/time")
+            amd.require(["statebox", "todo", "inspect", "mouse", "time"], function(statebox, todo, inspect, mouse, time) {
+                let box = new statebox.Box()
+                mouse.start     (box.with("mouse"))
+                time.start      (box.with("time"))
+                todo.start      (document.querySelector("#left"),  box.with("todo"))
+                inspect.start   (document.querySelector("#right"), box)
+            })
+        </script>
+    </head>
+    <body> 
+        <div id="container">
+            <div id="header">
+                <h1>statebox + react workbench</h1>
+            </div>
+            <div id="content">
+                <div id="left"></div>
+                <div id="right"></div>
+            </div>
+        </div>
+    </body>
+</html>

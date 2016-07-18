@@ -1,9 +1,0 @@
-{
-  "compilerOptions": {
-    "outDir": "./bin",
-    "declaration": true
-  },
-  "files": [
-    "src/statebox.ts"
-  ]
-}

@@ -49,8 +49,8 @@ with boxes running in other browsers over a network.
 ## build
 from the project root.
 ```
-npm install typescript -g
-tsc 
+node tasks install
+node tasks build
 ```
 
 ## creating a box

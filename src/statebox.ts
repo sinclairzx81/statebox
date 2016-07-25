@@ -181,7 +181,15 @@ function to_cell(owner: Box, value: any) : Cell {
         default:          return CellValue  (owner, v)
     }
 }
-
+/**
+ * interface for a subscriber
+ */
+export interface Sub<T> {
+    unsub(): void
+}
+/**
+ * interface for a box.
+ */
 export interface Box {
     /**
      * publishes the current state of this box 
@@ -194,7 +202,7 @@ export interface Box {
      * @param {(T) => void} the subscriber function.
      * returns {Box<T>}
      */
-    sub<T>(fn: (T) => void): Box
+    sub<T>(fn: (T) => void): Sub<T>
     /**
      * returns the unique identifier for this box.
      * @returns {string}
@@ -280,28 +288,33 @@ export interface BoxFunction {
      */
     <T>(parent: Box, name: string, value: T) : Box
 }
-const create = signature()
-create.map([],      ()      => [undefined, undefined, undefined])
-create.map(["any"], (value) => [undefined, undefined, value])
-create.map(["object", "string", "any"])
-create.into((parent: Box, _name: string, value: any) => {
+
+//------------------------------------
+// BEGIN: BOX IMPLEMENTATION
+//------------------------------------
+const createBox = signature()
+createBox.map([],      ()      => [undefined, undefined, undefined])
+createBox.map(["any"], (value) => [undefined, undefined, value])
+createBox.map(["object", "string", "any"])
+createBox.into((parent: Box, _name: string, value: any) => {
     const parameter   = {  parent, name: _name, value }
     const identifier  = uuid.create()
-    const subscribers = new Array<(T) => void>()
     const self        = { id, name, type, inner, pub, sub, into, drop, ini, set, map, get }
+    let   subs        = new Array<(T) => void>()
     let   cell        = to_cell(self, parameter.value)
-
 
     function id      () : string        { return identifier     }
     function name    () : string        { return parameter.name }
     function type    () : string        { return cell.type()    }
     function inner   () : Array<Box>    { return cell.inner()   }
-    function sub  <T>(fn: (T) => void): Box {
-        subscribers.push(fn)
-        return self
+    function sub  <T>(fn: (T) => void): Sub<T> {
+        subs.push(fn)
+        return {
+            unsub: () => subs = subs.filter(f => f !== fn)
+        } as Sub<T>
     }
     function pub(): Box {
-        subscribers.forEach(fn => fn(get()))
+        subs.forEach(fn => fn(get()))
         if(parameter.parent !== undefined) 
             parameter.parent.pub()
         return self
@@ -362,7 +375,8 @@ create.into((parent: Box, _name: string, value: any) => {
 })
 
 //------------------------------------
-// export
+// END: BOX IMPLEMENTATION
 //------------------------------------
-export const Box = create as BoxFunction
+
+export const Box = createBox as BoxFunction
 

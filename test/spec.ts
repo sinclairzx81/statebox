@@ -146,7 +146,7 @@ test("ini from null", context => {
 test("dynamic array length", context => {
     let box = Box()
     box.into(10).set(1)
-    context.assert(box.get().length === 11)
+    context.assert(box.get<any[]>().length === 11)
     context.ok()
 })
 test("box properties and index names", context => {
@@ -503,5 +503,23 @@ test("subscribe and publish (object)", context => {
     box.into("customer/firstname").set("alice").pub()
 })
 
+test("subscribe and unsubscribe (single)", context => {
+    let box = Box({value: 0})
+    let sub = box.sub(value => context.assert("should not execute", false))
+    sub.unsub()
+    box.set({value: 1}).pub()
+    context.ok()
+})
+
+test("subscribe and unsubscribe (multiple - unsub 1)", context => {
+    let box  = Box({value: 0})
+    let flag = false
+    let sub0 = box.sub(value => context.assert("should not execute", false))
+    let sub1 = box.sub(value => flag = true)
+    sub0.unsub()
+    box.set({value: 1}).pub()
+    context.assert(flag)
+    context.ok()
+})
 
 run()

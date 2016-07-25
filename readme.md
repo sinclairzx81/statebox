@@ -130,7 +130,12 @@ box.pub()
 
 ## sub()
 
-subscribes to a box. the subscription callback is fired when the pub() function is called on the box.
+subscribes to a box and returns a subscription object to the caller.
+
+
+### subscribe
+
+the subscription callback is fired when the pub() function is called on the box.
 
 ```javascript
 let box = Box()
@@ -140,9 +145,24 @@ box.into("events").sub(event => {
     console.assert(event.value === 1)   
 })
 
-box.set({type: "click", value: 1}).pub()
-box.set({type: "click", value: 2}).pub()
-box.set({type: "click", value: 3}).pub()
+box.into("events").set({type: "click", value: 1}).pub()
+box.into("events").set({type: "click", value: 2}).pub()
+box.into("events").set({type: "click", value: 3}).pub()
+```
+### unsubscribe
+The sub() function returns a subscription object
+
+```javascript
+let box = Box()
+
+let sub = box.into("events").sub(event => {
+    console.assert(event.type === "click")
+    console.assert(event.value === 1)   
+})
+
+// ...
+
+sub.unsub() // unsubscribe.
 ```
 
 ## ini()

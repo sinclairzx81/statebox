@@ -1,0 +1,6 @@
+{
+    "compilerOptions": {
+        "outDir": "bin"
+    },
+    "files" : ["test/spec.ts"]
+}

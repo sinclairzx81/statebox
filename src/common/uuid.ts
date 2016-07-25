@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------------
 
-statebox-ts - javascript state container.
+statebox-ts - observable javascript state container.
 
 The MIT License (MIT)
 
@@ -25,3 +25,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ---------------------------------------------------------------------------*/
+
+export module uuid {
+    
+    /**
+     * returns a unique identifier.
+     * @returns {string}
+     */
+    export function create(): string {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random()*16|0, v = c == 'x' ? r : (r&0x3|0x8);
+            return v.toString(16);
+        });
+    }
+}
